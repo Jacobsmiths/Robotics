@@ -4,7 +4,7 @@ import sys
 from machine import Pin
 ###### THIS IS THE ARDUCAM.PY FILE ########
 import gc
-from OV2640_Constants import *
+from OV2640_Constants import OV2640_YUV_96x96
 
 # Constants
 OV2640 = 0
