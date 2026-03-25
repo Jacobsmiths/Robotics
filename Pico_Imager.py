@@ -484,20 +484,21 @@ def capture_and_analyze():
     start_row, start_col = 24, 24
     
     # Resulting grayscale array (Y-channel only)
-    mid_section = bytearray(crop_w * crop_h)
+    mid_section = bytearray(crop_w * crop_h * 2)
     
     try:
         for y in range(crop_h):
-            # Pre-calculate row offset to save CPU cycles
-            row_offset = (start_row + y) * 96 * 2
-            for x in range(crop_w):
-                # We want the Y byte. In YUV422 (YUYV), Y is at index 0 and 2.
-                # In UYVY, Y is at index 1 and 3. 
-                # Let's target index 1 to be safe for most ArduCam YUV configs.
-                pixel_offset = (start_col + x) * 2
-                raw_idx = row_offset + pixel_offset + 1
-                
-                mid_section[y * crop_w + x] = raw_data[raw_idx]
+            # Row offset in the 96-wide original (each row is 192 bytes)
+            src_row_offset = (start_row + y) * 192
+            dst_row_offset = y * (crop_w * 2)
+            
+            # Column start (24 pixels * 2 bytes = 48 byte offset)
+            src_start = src_row_offset + (start_col * 2)
+            
+            # Copy the full color chunk (96 bytes per row)
+            num_bytes = crop_w * 2
+            mid_section[dst_row_offset : dst_row_offset + num_bytes] = \
+                raw_data[src_start : src_start + num_bytes]
     except IndexError:
         print("Data corruption detected during cropping.")
         return None
