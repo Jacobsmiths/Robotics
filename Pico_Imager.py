@@ -446,85 +446,69 @@ mycam.Spi_Test()
 mycam.Camera_Init()
 utime.sleep(1)
 
-def capture_and_analyze():
-    # 1. Clean up memory
+# --- Configuration ---
+# Change this to match your App's 160x120 setting
+# 160 * 120 * 2 (for YUV) = 38,400 bytes
+EXPECTED_LENGTH = 38400 
+AUTO_SEND_INTERVAL = 5000 # 5 seconds
+
+# --- Updated Capture Function ---
+def capture_and_send():
     gc.collect()
     
-    # Trigger Capture
+    # 1. Hardware Trigger
     mycam.Spi_write(0x04, 0x01) # Flush
     mycam.Spi_write(0x04, 0x02) # Start
     
-    timeout = 2000 
-    start_time = utime.ticks_ms()
+    # 2. Wait for Done
+    start_wait = utime.ticks_ms()
     while not (mycam.Spi_read(0x41)[0] & 0x08):
-        if utime.ticks_diff(utime.ticks_ms(), start_time) > timeout:
-            print("Capture Timeout")
-            return None, None
+        if utime.ticks_diff(utime.ticks_ms(), start_wait) > 1000:
+            return False
         utime.sleep_ms(1)
 
+    # 3. Read and Pipe to Serial
     length = mycam.read_fifo_length()
     
-    if length < 18432:
-        return None, None
-
-    # 2. Read full 96x96 data (18432 bytes)
-    raw_data = bytearray(length)
     mycam.SPI_CS.value(0)
     mycam.spi.write(bytearray([0x3C]))
-    mycam.spi.read(1) # Skip dummy
-    mycam.spi.readinto(raw_data)
-    mycam.SPI_CS.value(1)
-
-    # 3. Extract Mid-Section (48x48) for your internal logic
-    crop_w, crop_h = 48, 48
-    start_row, start_col = 24, 24
-    mid_section = bytearray(crop_w * crop_h * 2)
+    mycam.spi.read(1) # Dummy
     
-    try:
-        for y in range(crop_h):
-            src_row_offset = (start_row + y) * 192
-            dst_row_offset = y * (crop_w * 2)
-            src_start = src_row_offset + (start_col * 2)
-            num_bytes = crop_w * 2
-            mid_section[dst_row_offset : dst_row_offset + num_bytes] = \
-                raw_data[src_start : src_start + num_bytes]
-    except IndexError:
-        print("Crop failed")
-        return None, None
-
-    # We return BOTH: the full data for the app, and the crop for you
-    return raw_data, mid_section
+    # Stream in chunks to avoid memory spikes
+    remaining = length
+    while remaining > 0:
+        chunk_size = min(remaining, 256)
+        chunk = mycam.spi.read(chunk_size)
+        sys.stdout.buffer.write(chunk)
+        remaining -= chunk_size
+        
+    mycam.SPI_CS.value(1)
+    return True
 
 # --- Initialization ---
 mycam = ArducamClass(OV2640)
 mycam.Camera_Detection()
 mycam.Spi_Test()
-mycam.Camera_Init()
+
+# IMPORTANT: Setting to 160x120 to match your App
+mycam.wrSensorRegs8_8(OV2640_160x120_YUV) 
 utime.sleep(1)
-led = Pin(25, Pin.OUT)
 
-print("Starting 5-second loop...")
+last_send_time = utime.ticks_ms()
+print("System Online. Resolution: 160x120")
 
-# --- Main Loop ---
 while True:
-    led.value(1) # LED ON while processing
-    
-    # Capture the image
-    full_frame, ball_data = capture_and_analyze()
-    
-    if full_frame:
-        # 1. Send the FULL 96x96 image to the Windows App
-        # This uses the "Burst" method the app expects
-        sys.stdout.buffer.write(full_frame)
-        
-        # 2. Your internal analysis happens here using 'ball_data'
-        # Example: print(f"Analyzing {len(ball_data)} bytes for ball detection...")
-        
-        # Clean up the large buffer immediately
-        del full_frame
-        gc.collect()
+    # 1. Check if the App pushed the "Take Image" button (sent 0x10)
+    if sys.stdin.buffer.selectable(): # Checks if USB data is waiting
+        cmd = sys.stdin.buffer.read(1)
+        if cmd == b'\x10' or cmd == b'\x20':
+            capture_and_send()
+            last_send_time = utime.ticks_ms()
 
-    led.value(0) # LED OFF while waiting
+    # 2. Auto-send every 5 seconds if the app is idle
+    current_time = utime.ticks_ms()
+    if utime.ticks_diff(current_time, last_send_time) > AUTO_SEND_INTERVAL:
+        capture_and_send()
+        last_send_time = current_time
     
-    # Wait 5 seconds
-    utime.sleep(5)
+    utime.sleep_ms(10)
