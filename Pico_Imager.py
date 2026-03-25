@@ -1,6 +1,7 @@
 import machine
 import utime
 import sys
+from machine import Pin
 ###### THIS IS THE ARDUCAM.PY FILE ########
 import gc
 from OV2640_Constants import *
