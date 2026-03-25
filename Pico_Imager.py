@@ -515,9 +515,8 @@ while True:
 
     # 2. Force the data out immediately
     # (Sometimes the Pico waits for a full "packet" before sending)
-    sys.stdout.buffer.flush()
     
-    if pixels:
-        print(f"Mid-section processed. Size: {len(pixels)} bytes")
+#     if pixels:
+#         print(f"Mid-section processed. Size: {len(pixels)} bytes")
         # Now 'pixels' is a tiny 48x48 grayscale array!
     utime.sleep(5)
