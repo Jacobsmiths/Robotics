@@ -447,81 +447,84 @@ mycam.Camera_Init()
 utime.sleep(1)
 
 def capture_and_analyze():
-    # 1. Clean up memory before starting a heavy task
+    # 1. Clean up memory
     gc.collect()
     
     # Trigger Capture
-    mycam.Spi_write(0x04, 0x01)
-    mycam.Spi_write(0x04, 0x01) 
-    mycam.Spi_write(0x04, 0x02) 
+    mycam.Spi_write(0x04, 0x01) # Flush
+    mycam.Spi_write(0x04, 0x02) # Start
     
     timeout = 2000 
     start_time = utime.ticks_ms()
     while not (mycam.Spi_read(0x41)[0] & 0x08):
         if utime.ticks_diff(utime.ticks_ms(), start_time) > timeout:
             print("Capture Timeout")
-            return None
+            return None, None
         utime.sleep_ms(1)
 
     length = mycam.read_fifo_length()
     
-    # Check if we actually got a full 96x96 frame (18432 bytes)
-    # If the length is less, the math below will crash with IndexError
     if length < 18432:
-        print(f"Skipping frame: Short read ({length}/18432)")
-        return None
+        return None, None
 
-    # 2. Read raw data
+    # 2. Read full 96x96 data (18432 bytes)
     raw_data = bytearray(length)
     mycam.SPI_CS.value(0)
     mycam.spi.write(bytearray([0x3C]))
-    mycam.spi.read(1) # Skip dummy byte
+    mycam.spi.read(1) # Skip dummy
     mycam.spi.readinto(raw_data)
     mycam.SPI_CS.value(1)
 
-    # 3. Extract Mid-Section (48x48) safely
+    # 3. Extract Mid-Section (48x48) for your internal logic
     crop_w, crop_h = 48, 48
     start_row, start_col = 24, 24
-    
-    # Resulting grayscale array (Y-channel only)
     mid_section = bytearray(crop_w * crop_h * 2)
     
     try:
         for y in range(crop_h):
-            # Row offset in the 96-wide original (each row is 192 bytes)
             src_row_offset = (start_row + y) * 192
             dst_row_offset = y * (crop_w * 2)
-            
-            # Column start (24 pixels * 2 bytes = 48 byte offset)
             src_start = src_row_offset + (start_col * 2)
-            
-            # Copy the full color chunk (96 bytes per row)
             num_bytes = crop_w * 2
             mid_section[dst_row_offset : dst_row_offset + num_bytes] = \
                 raw_data[src_start : src_start + num_bytes]
     except IndexError:
-        print("Data corruption detected during cropping.")
-        return None
-    finally:
-        # 4. Explicitly delete the huge buffer and collect garbage
-        del raw_data
-        gc.collect()
+        print("Crop failed")
+        return None, None
 
-    return mid_section
+    # We return BOTH: the full data for the app, and the crop for you
+    return raw_data, mid_section
 
+# --- Initialization ---
+mycam = ArducamClass(OV2640)
+mycam.Camera_Detection()
+mycam.Spi_Test()
+mycam.Camera_Init()
+utime.sleep(1)
 led = Pin(25, Pin.OUT)
 
-# Main Loop
-while True:
-    led.toggle()
-    pixels = capture_and_analyze()
-    # 1. Send the raw binary data
-    sys.stdout.buffer.write(pixels)
+print("Starting 5-second loop...")
 
-    # 2. Force the data out immediately
-    # (Sometimes the Pico waits for a full "packet" before sending)
+# --- Main Loop ---
+while True:
+    led.value(1) # LED ON while processing
     
-#     if pixels:
-#         print(f"Mid-section processed. Size: {len(pixels)} bytes")
-        # Now 'pixels' is a tiny 48x48 grayscale array!
+    # Capture the image
+    full_frame, ball_data = capture_and_analyze()
+    
+    if full_frame:
+        # 1. Send the FULL 96x96 image to the Windows App
+        # This uses the "Burst" method the app expects
+        sys.stdout.buffer.write(full_frame)
+        
+        # 2. Your internal analysis happens here using 'ball_data'
+        # Example: print(f"Analyzing {len(ball_data)} bytes for ball detection...")
+        
+        # Clean up the large buffer immediately
+        del full_frame
+        gc.collect()
+
+    led.value(0) # LED OFF while waiting
+    
+    # Wait 5 seconds
     utime.sleep(5)
