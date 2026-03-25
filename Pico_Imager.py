@@ -513,7 +513,7 @@ led = Pin(25, Pin.OUT)
 
 # Main Loop
 while True:
-    led.value(led.value() ^ 1)
+    led.toggle()
     pixels = capture_and_analyze()
     # 1. Send the raw binary data
     sys.stdout.buffer.write(pixels)
