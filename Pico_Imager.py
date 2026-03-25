@@ -510,7 +510,14 @@ def capture_and_analyze():
 # Main Loop
 while True:
     pixels = capture_and_analyze()
+    # 1. Send the raw binary data
+    sys.stdout.buffer.write(pixels)
+
+    # 2. Force the data out immediately
+    # (Sometimes the Pico waits for a full "packet" before sending)
+    sys.stdout.buffer.flush()
+    
     if pixels:
         print(f"Mid-section processed. Size: {len(pixels)} bytes")
         # Now 'pixels' is a tiny 48x48 grayscale array!
-    utime.sleep(2)
+    utime.sleep(5)
