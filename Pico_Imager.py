@@ -125,20 +125,22 @@ class ArducamClass:
         self.wrSensorReg8_8(0x12, 0x80) 
         utime.sleep_ms(500)
 
-        print("Loading 96x96 Configuration...")
-        self.wrSensorRegs8_8(OV2640_YUV_96x96)
+        print("Setting Resolution to 160x120...")
+        # This sets the frame size/windowing
+        self.wrSensorRegs8_8(OV2640_160x120_JPEG) 
         utime.sleep_ms(100)
 
-        # --- ARDUCHIP CONFIGURATION (The "Secret Sauce") ---
-        # Register 0x07 controls the FIFO. 
-        # We need to ensure Bit 0 is 0 (Normal FIFO mode, not JPEG mode)
-        self.Spi_write(0x07, 0x00) 
+        print("Forcing Output Format to YUV422...")
+        # This switches the DSP from JPEG compression to raw YUV bytes
+        self.wrSensorRegs8_8(OV2640_YUV422)
         
-        # Register 0x01: Ensure Arducam isn't in 'one-shot' mode prematurely
-        # and isn't looking for JPEG magic numbers.
-        self.Spi_write(0x01, 0x00) 
+        # CRITICAL: Manual override for Register 0xDA 
+        # This ensures the sensor doesn't accidentally stay in JPEG mode (0x10)
+        self.wrSensorReg8_8(0xff, 0x00) # Switch to Bank 0
+        self.wrSensorReg8_8(0xDA, 0x00) # 0x00 = YUV, 0x10 = JPEG
+        utime.sleep_ms(100)
         
-        print("FIFO configured for RAW/YUV stream.")
+        print("Camera Ready for YUV Capture.")
         
     def flush_fifo(self):
             self.Spi_write(0x04, 0x01)
