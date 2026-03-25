@@ -449,10 +449,6 @@ utime.sleep(1)
 # --- Configuration ---
 # Change this to match your App's 160x120 setting
 # 160 * 120 * 2 (for YUV) = 38,400 bytes
-EXPECTED_LENGTH = 38400 
-AUTO_SEND_INTERVAL = 5000 # 5 seconds
-
-# --- Updated Capture Function ---
 def capture_and_send():
     gc.collect()
     
@@ -467,48 +463,62 @@ def capture_and_send():
             return False
         utime.sleep_ms(1)
 
-    # 3. Read and Pipe to Serial
+    # 3. Get Length
     length = mycam.read_fifo_length()
     
+    # --- PROTOCOL HEADER FOR HOST APP ---
+    # The HostApp expects: 0x55, 0xAA, Length_L, Length_M, Length_H
+    header = bytearray([0x55, 0xAA, (length & 0xFF), ((length >> 8) & 0xFF), ((length >> 16) & 0xFF)])
+    sys.stdout.buffer.write(header)
+    
+    # 4. Read SPI and Pipe to Serial
     mycam.SPI_CS.value(0)
     mycam.spi.write(bytearray([0x3C]))
-    mycam.spi.read(1) # Dummy
+    mycam.spi.read(1) # Dummy read required by Arducam hardware
     
-    # Stream in chunks to avoid memory spikes
     remaining = length
     while remaining > 0:
-        chunk_size = min(remaining, 256)
+        chunk_size = min(remaining, 512) # Increased chunk size for faster serial transfer
         chunk = mycam.spi.read(chunk_size)
         sys.stdout.buffer.write(chunk)
         remaining -= chunk_size
         
     mycam.SPI_CS.value(1)
+    
+    # Optional: Flush the buffer to ensure the app receives the full frame immediately
+    # sys.stdout.buffer.flush() 
     return True
 
-# --- Initialization ---
-mycam = ArducamClass(OV2640)
+# --- Main Loop Integration ---
+
+# Re-init sequence to ensure registers are set for 160x120 YUV
 mycam.Camera_Detection()
 mycam.Spi_Test()
+mycam.Camera_Init() # Resets sensor
+utime.sleep_ms(500)
 
-# IMPORTANT: Setting to 160x120 to match your App
+# Force the specific resolution and format
 mycam.wrSensorRegs8_8(OV2640_160x120_YUV) 
 utime.sleep(1)
 
 last_send_time = utime.ticks_ms()
-print("System Online. Resolution: 160x120")
+
+# Clear any junk in the serial buffers before starting
+while sys.stdin.buffer.selectable():
+    sys.stdin.buffer.read(1)
 
 while True:
-    # 1. Check if the App pushed the "Take Image" button (sent 0x10)
-    if sys.stdin.buffer.selectable(): # Checks if USB data is waiting
+    # 1. Check for App Commands (0x10 is Take Photo, 0x20 is Stream)
+    if sys.stdin.buffer.selectable():
         cmd = sys.stdin.buffer.read(1)
         if cmd == b'\x10' or cmd == b'\x20':
             capture_and_send()
             last_send_time = utime.ticks_ms()
 
-    # 2. Auto-send every 5 seconds if the app is idle
+    # 2. Auto-send if the app is waiting or to keep connection alive
     current_time = utime.ticks_ms()
     if utime.ticks_diff(current_time, last_send_time) > AUTO_SEND_INTERVAL:
         capture_and_send()
         last_send_time = current_time
     
-    utime.sleep_ms(10)
+    utime.sleep_ms(1)
