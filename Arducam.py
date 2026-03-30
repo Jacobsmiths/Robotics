@@ -1,9 +1,8 @@
 import machine
-import time as utime
+import utime
 from OV2640_Constants import *
 
 # Constants
-OV2640 = 0
 MAX_FIFO_SIZE = 0x7FFFFF
 ARDUCHIP_FRAMES = 0x01
 ARDUCHIP_TIM = 0x03
@@ -11,176 +10,133 @@ VSYNC_LEVEL_MASK = 0x02
 ARDUCHIP_TRIG = 0x41
 CAP_DONE_MASK = 0x08
 
-# Resolution Constants
-OV2640_160x120 = 0
-OV2640_176x144 = 1
-OV2640_320x240 = 2
-OV2640_352x288 = 3
-OV2640_640x480 = 4
-OV2640_800x600 = 5
-OV2640_1024x768 = 6
-OV2640_1280x1024 = 7
-OV2640_1600x1200 = 8
-
 # Effect and Setting Constants
 Auto, Sunny, Cloudy, Office, Home = 0, 1, 2, 3, 4
 Antique, Bluish, Greenish, Reddish, BW, Negative, BWnegative, Normal = 0, 1, 2, 3, 4, 5, 6, 7
-BMP, JPEG, RAW, YUV = 0, 1, 2, 3
 Saturation2, Saturation1, Saturation0, Saturation_1, Saturation_2 = 2, 3, 4, 5, 6
 Brightness2, Brightness1, Brightness0, Brightness_1, Brightness_2 = 2, 3, 4, 5, 6
 Contrast2, Contrast1, Contrast0, Contrast_1, Contrast_2 = 2, 3, 4, 5, 6
-Compression_Off, Compression_1, Compression_2, Compression_3, Compression_4, Compression_Full = 0, 1, 2, 3, 4, 5
 
 class ArducamClass:
-    def __init__(self, Type, mode=YUV):
-        self.CameraMode = mode
-        self.CameraType = Type
+    def __init__(self):
         self.I2cAddress = 0x30
         
         # SPI Setup (Adjust pins for your specific MicroPython board)
         # Assuming Raspberry Pi Pico pins based on original GP numbers
-        self.SPI_CS = machine.Pin(5, machine.Pin.OUT)
-        self.SPI_CS.value(1)
+        self.cs = machine.Pin(5, machine.Pin.OUT)
+        self.cs.value(1)
+
+        self.spi = machine.SPI(0, baudrate=4000000, sck=machine.Pin(2), mosi=machine.Pin(3), miso=machine.Pin(4))
+        self.i2c = machine.I2C(scl=machine.Pin(9), sda=machine.Pin(8), freq=50000)
         
-        # Software SPI or Hardware SPI (using bus 0)
-        self.spi = machine.SPI(0, baudrate=4000000, polarity=0, phase=0, 
-                               sck=machine.Pin(2), mosi=machine.Pin(3), miso=machine.Pin(4))
-        
-        # I2C Setup (Software I2C to match bitbangio behavior)
-        self.i2c = machine.SoftI2C(scl=machine.Pin(9), sda=machine.Pin(8), freq=100000)
-        
+        utime.sleep_ms(100)
         print("I2C Scan:", self.i2c.scan())
         
-        self.Spi_write(0x07, 0x80)
-        utime.sleep(0.1)
-        self.Spi_write(0x07, 0x00)
-        utime.sleep(0.1)
+    def Camera_Init(self):
+        # most of this is the I2C settings except last part is SPI clear buffer
+        print("Resetting Sensor...")
+        # this sets it to bank 1 which allows the total reset of image settings
+        self.wrSensorReg8_8(0xff, 0x01)
+        utime.sleep_ms(100)
+        # this resets the actual OV2640 chip
+        self.wrSensorReg8_8(0x12, 0x80) 
+        utime.sleep_ms(100)
+        
+        print("Setting Resolution to 160x120...")
+        # This sets the frame size/windowing
+        self.wrSensorRegs8_8(OV2640_160x120_JPEG) 
+        utime.sleep_ms(500)
 
-    def Camera_Detection(self):
-        while True:
-            if self.CameraType == OV2640:
-                self.I2cAddress = 0x30
-                self.wrSensorReg8_8(0xff, 0x01)
-                id_h = self.rdSensorReg8_8(0x0a)
-                id_l = self.rdSensorReg8_8(0x0b)
-                if ((id_h == 0x26) and ((id_l == 0x40) or (id_l == 0x42))):
-                    print('CameraType is OV2640')
-                    break
-                else:
-                    print('Can\'t find OV2640 module')
-            utime.sleep(1)
+        print("Setting Output Format to YUV422...")
+        # This switches the DSP from JPEG compression to raw YUV bytes
+        self.wrSensorRegs8_8(OV2640_YUV422)
+        utime.sleep_ms(500)
+        # This officially forces YUV mode and not to use JPEG compression
+        self.wrSensorReg8_8(0xff, 0x00) # Switch to Bank 0 for setting image settings
+        utime.sleep_ms(100)
+        self.wrSensorReg8_8(0xDA, 0x00) # 0x00 = YUV, setting actual YUV value 
+        utime.sleep_ms(100)
+        
+        self.clear_buffer()
+        print("Camera Ready for YUV Capture.")
 
-    def Set_Camera_mode(self, mode):
-        self.CameraMode = mode
-
-    # I2C Communication Methods
-    def wrSensorReg16_8(self, addr, val):
-        buf = bytearray([(addr >> 8) & 0xff, addr & 0xff, val])
-        self.i2c.writeto(self.I2cAddress, buf)
-
-    def rdSensorReg16_8(self, addr):
-        buf = bytearray([(addr >> 8) & 0xff, addr & 0xff])
-        self.i2c.writeto(self.I2cAddress, buf)
-        return self.i2c.readfrom(self.I2cAddress, 1)[0]
-
-    def wrSensorReg8_8(self, addr, val):
-        self.i2c.writeto(self.I2cAddress, bytearray([addr, val]))
-
-    def rdSensorReg8_8(self, addr):
-        self.i2c.writeto(self.I2cAddress, bytearray([addr]))
-        return self.i2c.readfrom(self.I2cAddress, 1)[0]
-
+    def spi_test(self):
+        # this tests the SPI test register by sending it a value and then reading it
+        test_val = 0x55
+        print(f"Testing SPI")
+    
+        self.spi_write(0x00, test_val)
+        utime.sleep_ms(100)
+        read_val = self.spi_read(0x00)
+        
+        if read_val and read_val[0] == test_val:
+            print(f"SPI: Success")
+        else:
+            actual_byte = read_val[0] if read_val else "None"
+            print(f"FAILED: Wrote {hex(test_val)}, but read back {hex(actual_byte)}")
+    
+    def capture_to_buffer(self, buffer):
+        self.SPI_CS.value(0)
+        self.spi.write(bytearray([0x3C]))
+        self.spi.read(1)
+        self.spi.readinto(buffer)
+        self.SPI_CS.value(1)
+        return True
+    
     # SPI Communication Methods
-    def Spi_write(self, address, value):
+    def start_capture(self):
+        # This starts the captuer with bit 1
+        self.spi_write(0x04, 0x02)
+        
+    def clear_buffer(self):
+        # Reset fifo buffer (this is bit 0 + bit 4 + bit 5) for clear fifo write done flag, reset write pointer, reset fifo read pointer resp.
+        # added another spi_write of bit 0 becuase other codes do it twice?
+        self.spi_write(0x04, 0x31)  # Clear capture done flag
+    
+    def read_fifo_length(self):
+        """Reads fifo length"""
+        len1 = self.spi_read(0x42)[0]
+        len2 = self.spi_read(0x43)[0]
+        len3 = self.spi_read(0x44)[0] & 0x7f
+        return ((len3 << 16) | (len2 << 8) | len1) & 0x7FFFFF
+    
+    def get_bit(self, addr, mask):
+        """Reads one bit via SPI of the ardubridge chip"""
+        res = self.spi_read(addr)
+        if res:
+            return res[0] & mask
+        return 0
+    
+    def spi_write(self, address, value):
+        # pulls the value low to wake up spi
         self.SPI_CS.value(0)
         self.spi.write(bytearray([address | 0x80, value]))
         self.SPI_CS.value(1)
 
-    def Spi_read(self, address):
+    def spi_read(self, address):
         self.SPI_CS.value(0)
         self.spi.write(bytearray([address & 0x7f]))
         data = self.spi.read(1)
         self.SPI_CS.value(1)
         return data
-
-    def Spi_Test(self):
-        while True:
-            self.Spi_write(0x00, 0x56)
-            value = self.Spi_read(0x00)
-            if value and value[0] == 0x56:
-                print('SPI interface OK')
-                break
-            else:
-                print('SPI interface Error')
-            utime.sleep(1)
-
-    def Camera_Init(self, mode=None):
-        if mode is not None:
-            self.Set_Camera_mode(mode)
-        if self.CameraType == OV2640:
-            if self.CameraMode == JPEG:
-                print("JPEG Mode")
-                self.wrSensorReg8_8(0xff, 0x01)
-                self.wrSensorReg8_8(0x12, 0x80)
-                utime.sleep(0.1)
-                self.wrSensorRegs8_8(OV2640_JPEG_INIT)
-                self.wrSensorRegs8_8(OV2640_YUV422)
-                self.wrSensorRegs8_8(OV2640_JPEG)
-                self.wrSensorReg8_8(0xff, 0x01)
-                self.wrSensorReg8_8(0x15, 0x00)
-                self.wrSensorRegs8_8(OV2640_320x240_JPEG)
-            elif self.CameraMode == YUV:
-                print("YUV Mode")
-                self.wrSensorReg8_8(0xff, 0x01)
-                self.wrSensorReg8_8(0x12, 0x80)
-                utime.sleep(0.1)
-                self.wrSensorRegs8_8(OV2640_YUV_96x96)
-
-    def flush_fifo(self):
-        self.Spi_write(0x04, 0x01)
-
-    def start_capture(self):
-        self.Spi_write(0x04, 0x02)
-
-    def read_fifo_length(self):
-        len1 = self.Spi_read(0x42)[0]
-        len2 = self.Spi_read(0x43)[0]
-        len3 = self.Spi_read(0x44)[0] & 0x7f
-        return ((len3 << 16) | (len2 << 8) | len1) & 0x7FFFFF
-
+        
+    # I2C Communication Methods
+    def wrSensorReg8_8(self, addr, val):
+        """writes one register of the OV2640"""
+        self.i2c.writeto(self.I2cAddress, bytearray([addr, val]))
+                                          
     def wrSensorRegs8_8(self, reg_value):
+        """Writes multiple registers of the OV2640"""
         for addr, val in reg_value:
             if addr == 0xff and val == 0xff:
                 return
             self.wrSensorReg8_8(addr, val)
             utime.sleep_ms(1)
 
-    def OV2640_set_JPEG_size(self, size):
-        if self.CameraMode == YUV:
-            print("Mode is YUV. [set_JPEG_size] not possible. Please init Camera with mode=JPEG")
-            return
-
-        if size == OV2640_160x120:
-            self.wrSensorRegs8_8(OV2640_160x120_JPEG)
-        elif size == OV2640_176x144:
-            self.wrSensorRegs8_8(OV2640_176x144_JPEG)
-        elif size == OV2640_320x240:
-            self.wrSensorRegs8_8(OV2640_320x240_JPEG)
-        elif size == OV2640_352x288:
-            self.wrSensorRegs8_8(OV2640_352x288_JPEG)
-        elif size == OV2640_640x480:
-            self.wrSensorRegs8_8(OV2640_640x480_JPEG)
-        elif size == OV2640_800x600:
-            self.wrSensorRegs8_8(OV2640_800x600_JPEG)
-        elif size == OV2640_1024x768:
-            self.wrSensorRegs8_8(OV2640_1024x768_JPEG)
-        elif size == OV2640_1280x1024:
-            self.wrSensorRegs8_8(OV2640_1280x1024_JPEG)
-        elif size == OV2640_1600x1200:
-            self.wrSensorRegs8_8(OV2640_1600x1200_JPEG)
-            print("Max")
-        else:
-            self.wrSensorRegs8_8(OV2640_320x240_JPEG)
+    def rdSensorReg8_8(self, addr):
+        """Reads one register of the OV2640"""
+        self.i2c.writeto(self.I2cAddress, bytearray([addr]))
+        return self.i2c.readfrom(self.I2cAddress, 1)[0]
 
     def OV2640_set_Light_Mode(self, result):
         if result == Auto:
@@ -392,30 +348,3 @@ class ArducamClass:
             self.wrSensorReg8_8(0x7c, 0x05)
             self.wrSensorReg8_8(0x7d, 0x80)
             self.wrSensorReg8_8(0x7d, 0x80)
-
-    def OV2640_set_JPEG_Compression(self, compression):
-        '''
-            compression int 0 - 5
-        '''
-        if self.CameraMode == YUV:
-            print("Mode is YUV. [set_JPEG_size] not possible. Please init Camera with mode=JPEG")
-            return
-
-        if compression == Compression_Off:
-            self.wrSensorReg8_8(0xff, 0x00)
-            self.wrSensorReg8_8(0x44, 0x00)
-        elif compression == Compression_1:
-            self.wrSensorReg8_8(0xff, 0x00)
-            self.wrSensorReg8_8(0x44, 0x33)
-        elif compression == Compression_2:
-            self.wrSensorReg8_8(0xff, 0x00)
-            self.wrSensorReg8_8(0x44, 0x66)
-        elif compression == Compression_3:
-            self.wrSensorReg8_8(0xff, 0x00)
-            self.wrSensorReg8_8(0x44, 0x99)
-        elif compression == Compression_4:
-            self.wrSensorReg8_8(0xff, 0x00)
-            self.wrSensorReg8_8(0x44, 0xcc)
-        elif compression == Compression_Full:
-            self.wrSensorReg8_8(0xff, 0x00)
-            self.wrSensorReg8_8(0x44, 0xff)
