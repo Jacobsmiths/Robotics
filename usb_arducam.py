@@ -1,237 +1,117 @@
-import time as utime
 from machine import Pin, SPI, I2C
-from OV2640_Constants import *
+import time
+from OV2640_reg import *
+from OV5642_reg import *
 
-# Camera type
-OV2640 = 0
+# Constants
+OV2640=0
+OV5642=1
+MAX_FIFO_SIZE=0x7FFFFF
+ARDUCHIP_FRAMES=0x01
+ARDUCHIP_TIM=0x03
+VSYNC_LEVEL_MASK=0x02
+ARDUCHIP_TRIG=0x41
+CAP_DONE_MASK=0x08
+OV5642_CHIPID_HIGH=0x300a
+OV5642_CHIPID_LOW=0x300b
 
-# Registers
-ARDUCHIP_TIM = 0x03
-VSYNC_LEVEL_MASK = 0x02
-ARDUCHIP_TRIG = 0x41
-CAP_DONE_MASK = 0x08
-
-# JPEG sizes
-OV2640_160x120   = 0
-OV2640_176x144   = 1
-OV2640_320x240   = 2
-OV2640_352x288   = 3
-OV2640_640x480   = 4
-OV2640_800x600   = 5
-OV2640_1024x768  = 6
-OV2640_1280x1024 = 7
-OV2640_1600x1200 = 8
-
-# Light modes
-Auto   = 0
-Sunny  = 1
-Cloudy = 2
-Office = 3
-Home   = 4
-
-# Effects
-Antique    = 0
-Bluish     = 1
-Greenish   = 2
-Reddish    = 3
-BW         = 4
-Negative   = 5
-BWnegative = 6
-Normal     = 7
-
-# Saturation
-Saturation2  = 2
-Saturation1  = 3
-Saturation0  = 4
-Saturation_1 = 5
-Saturation_2 = 6
-
-# Brightness
-Brightness2  = 2
-Brightness1  = 3
-Brightness0  = 4
-Brightness_1 = 5
-Brightness_2 = 6
-
-# Contrast
-Contrast2  = 2
-Contrast1  = 3
-Contrast0  = 4
-Contrast_1 = 5
-Contrast_2 = 6
-
-# Format
-BMP  = 0
+# Resolution and Quality Enums (Truncated for brevity, keep your original lists)
+OV2640_320x240 = 2
 JPEG = 1
-RAW  = 2
+# ... [Include all other constants from your original file here] ...
 
-
-class ArducamClass:
+class ArducamClass(object):
     def __init__(self, Type):
         self.CameraMode = JPEG
         self.CameraType = Type
-
-        # SPI CS pin
-        self.SPI_CS = Pin(5, Pin.OUT)
-        self.SPI_CS.value(1)
-
-        # SPI
-        self.spi = SPI(
-            0,
-            baudrate=4000000,
-            polarity=0,
-            phase=1,
-            sck=Pin(2),
-            mosi=Pin(3),
-            miso=Pin(4)
-        )
-
-        # I2C
-        self.i2c = I2C(
-            scl=Pin(9),
-            sda=Pin(8),
-            freq=1000000
-        )
-
         self.I2cAddress = 0x30
-
-        print(self.i2c.scan())
-
+        
+        # SPI Setup (Pico Pins: SCK=GP2, MOSI=GP3, MISO=GP4)
+        self.spi = SPI(0, baudrate=4000000, polarity=0, phase=0, sck=Pin(2), mosi=Pin(3), miso=Pin(4))
+        self.SPI_CS = Pin(5, Pin.OUT, value=1)
+        
+        # I2C Setup (Pico Pins: SCL=GP9, SDA=GP8)
+        self.i2c = I2C(0, scl=Pin(9), sda=Pin(8), freq=1000000)
+        
+        print("I2C Scan:", self.i2c.scan())
+        
         self.Spi_write(0x07, 0x80)
-        utime.sleep(0.1)
+        time.sleep(0.1)
         self.Spi_write(0x07, 0x00)
-        utime.sleep(0.1)
+        time.sleep(0.1)
 
-    # ------------------------
-    # Camera detection
-    # ------------------------
     def Camera_Detection(self):
         while True:
-            # CRITICAL: Switch to Sensor Bank 1 to read ID registers
-            self.wrSensorReg8_8(0xff, 0x01)
-            utime.sleep(0.01) # Small delay for bank switch
-            
-            id_h = self.rdSensorReg8_8(0x0a)
-            id_l = self.rdSensorReg8_8(0x0b)
+            if self.CameraType == OV2640:
+                self.I2cAddress = 0x30
+                self.wrSensorReg8_8(0xff, 0x01)
+                id_h = self.rdSensorReg8_8(0x0a)
+                id_l = self.rdSensorReg8_8(0x0b)
+                if id_h == 0x26 and (id_l == 0x40 or id_l == 0x42):
+                    print('CameraType is OV2640')
+                    break
+            elif self.CameraType == OV5642:
+                self.I2cAddress = 0x3c
+                self.wrSensorReg16_8(0xff, 0x01)
+                id_h = self.rdSensorReg16_8(OV5642_CHIPID_HIGH)
+                id_l = self.rdSensorReg16_8(OV5642_CHIPID_LOW)
+                if id_h == 0x56 and id_l == 0x42:
+                    print('CameraType is OV5642')
+                    break
+            print('Camera not found, retrying...')
+            time.sleep(1)
 
-            print("Debug: ID_H=0x{:02x}, ID_L=0x{:02x}".format(id_h, id_l))
-
-            if (id_h == 0x26) and (id_l in (0x40, 0x42)):
-                print("Success: OV2640 detected!")
-                break
-            else:
-                print("Detection failed. Check power and ribbon cable.")
-            
-            utime.sleep(1)
-
-    # ------------------------
-    # I2C helpers
-    # ------------------------
-    def iic_write(self, buf):
+    def wrSensorReg16_8(self, addr, val):
+        buf = bytearray([(addr >> 8) & 0xff, addr & 0xff, val])
         self.i2c.writeto(self.I2cAddress, buf)
+        time.sleep_ms(3)
 
-    def iic_readinto(self, buf):
-        self.i2c.readfrom_into(self.I2cAddress, buf)
+    def rdSensorReg16_8(self, addr):
+        buf = bytearray([(addr >> 8) & 0xff, addr & 0xff])
+        self.i2c.writeto(self.I2cAddress, buf)
+        return self.i2c.readfrom(self.I2cAddress, 1)[0]
 
     def wrSensorReg8_8(self, addr, val):
-        self.iic_write(bytearray([addr, val]))
+        self.i2c.writeto(self.I2cAddress, bytearray([addr, val]))
 
     def rdSensorReg8_8(self, addr):
         self.i2c.writeto(self.I2cAddress, bytearray([addr]))
-        data = self.i2c.readfrom(self.I2cAddress, 1)
-        return data[0]
+        return self.i2c.readfrom(self.I2cAddress, 1)[0]
 
-    # ------------------------
-    # SPI helpers
-    # ------------------------
-    def SPI_CS_LOW(self):
+    def Spi_write(self, address, value):
         self.SPI_CS.value(0)
-
-    def SPI_CS_HIGH(self):
+        self.spi.write(bytearray([address | 0x80, value]))
         self.SPI_CS.value(1)
 
-    def Spi_write(self, addr, val):
-        self.SPI_CS_LOW()
-        self.spi.write(bytearray([addr | 0x80, val]))
-        self.SPI_CS_HIGH()
+    def Spi_read(self, address):
+        self.SPI_CS.value(0)
+        self.spi.write(bytearray([address & 0x7f]))
+        data = self.spi.read(1)
+        self.SPI_CS.value(1)
+        return data
 
-    def Spi_read(self, addr):
-        self.SPI_CS_LOW()
-        self.spi.write(bytearray([addr & 0x7F]))
-        buf = bytearray(1)
-        self.spi.readinto(buf)
-        self.SPI_CS_HIGH()
-        return buf
-
-    # ------------------------
-    # Core functions
-    # ------------------------
-    def get_bit(self, addr, bit):
-        return self.Spi_read(addr)[0] & bit
-
-    def set_bit(self, addr, bit):
-        temp = self.Spi_read(addr)[0]
-        self.Spi_write(addr, temp & (~bit))
-
-    def flush_fifo(self):
-        self.Spi_write(0x04, 0x01)
-
-    def clear_fifo_flag(self):
-        self.Spi_write(0x04, 0x01)
-
-    def start_capture(self):
-        self.Spi_write(0x04, 0x02)
+    def SPI_CS_LOW(self): self.SPI_CS.value(0)
+    def SPI_CS_HIGH(self): self.SPI_CS.value(1)
 
     def set_fifo_burst(self):
-        self.SPI_CS_LOW()
-        self.spi.write(bytearray([0x3C]))
+        self.spi.write(bytearray([0x3c]))
 
     def read_fifo_length(self):
         len1 = self.Spi_read(0x42)[0]
         len2 = self.Spi_read(0x43)[0]
-        len3 = self.Spi_read(0x44)[0] & 0x7F
-        return ((len3 << 16) | (len2 << 8) | len1) & 0x07FFFFF
+        len3 = self.Spi_read(0x44)[0] & 0x7f
+        return (len3 << 16) | (len2 << 8) | len1
 
-    # ------------------------
-    # Init
-    # ------------------------
-    def Camera_Init(self):
-        self.wrSensorReg8_8(0xff, 0x01)
-        self.wrSensorReg8_8(0x12, 0x80)
-        utime.sleep(0.1)
-
-        self.wrSensorRegs8_8(OV2640_JPEG_INIT)
-        self.wrSensorRegs8_8(OV2640_YUV422)
-        self.wrSensorRegs8_8(OV2640_JPEG)
-
-        self.wrSensorReg8_8(0xff, 0x01)
-        self.wrSensorReg8_8(0x15, 0x00)
-        self.wrSensorRegs8_8(OV2640_320x240_JPEG)
+    def flush_fifo(self): self.Spi_write(0x04, 0x01)
+    def clear_fifo_flag(self): self.Spi_write(0x04, 0x01)
+    def start_capture(self): self.Spi_write(0x04, 0x02)
+    def get_bit(self, addr, bit): return self.Spi_read(addr)[0] & bit
 
     def wrSensorRegs8_8(self, reg_list):
-        for reg in reg_list:
-            addr, val = reg
-            if addr == 0xFF and val == 0xFF:
-                return
+        for addr, val in reg_list:
+            if addr == 0xff and val == 0xff: return
             self.wrSensorReg8_8(addr, val)
-            utime.sleep(0.001)
-
-    # ------------------------
-    # Settings
-    # ------------------------
-    def set_format(self, mode):
-        self.CameraMode = mode
-
-    def OV2640_set_JPEG_size(self, size):
-        tables = [
-            OV2640_160x120_JPEG,
-            OV2640_176x144_JPEG,
-            OV2640_320x240_JPEG,
-            OV2640_352x288_JPEG,
-            OV2640_640x480_JPEG,
-            OV2640_800x600_JPEG,
-            OV2640_1024x768_JPEG,
-            OV2640_1280x1024_JPEG,
-            OV2640_1600x1200_JPEG
-        ]
-        self.wrSensorRegs8_8(tables[size] if size < len(tables) else OV2640_320x240_JPEG)
+            time.sleep_ms(1)
+            
+    # Include your existing OV2640_set_JPEG_size and other helper methods here, 
+    # ensuring they use the self.wrSensorRegs methods defined above.
