@@ -36,6 +36,30 @@ def read_fifo_burst():
     mycam.SPI_CS_HIGH()
     mycam.clear_fifo_flag()
 
+print("Starting auto-capture test in 3 seconds...")
+time.sleep(3)
+
+# 1. Set a resolution (e.g., 320x240 which is index 2)
+print("Setting resolution...")
+mycam.OV2640_set_JPEG_size(2) 
+time.sleep(1)
+
+# 2. Trigger one capture manually
+print("Triggering Capture...")
+mycam.flush_fifo()
+mycam.clear_fifo_flag()
+mycam.start_capture()
+
+# 3. Wait for the camera to finish
+while not mycam.get_bit(ARDUCHIP_TRIG, CAP_DONE_MASK):
+    time.sleep(0.1)
+
+print("Capture Done! Sending raw bytes now...")
+# 4. Stream the data to the terminal
+read_fifo_burst()
+
+print("\nTest Complete.")
+
 while True:
     # Check if data is available on Serial (stdin)
     if select.select([sys.stdin], [], [], 0)[0]:
