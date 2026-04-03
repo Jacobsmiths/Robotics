@@ -1,6 +1,6 @@
 import time as utime
 from machine import Pin, SPI, I2C
-from OV2640_reg import *
+from OV2640_Constants import *
 
 # Camera type
 OV2640 = 0
@@ -78,10 +78,9 @@ class ArducamClass:
         # SPI
         self.spi = SPI(
             0,
-            baudrate=4_000_000,
+            baudrate=4000000,
             polarity=0,
-            phase=0,
-            bits=8,
+            phase=1,
             sck=Pin(2),
             mosi=Pin(3),
             miso=Pin(4)
@@ -89,10 +88,9 @@ class ArducamClass:
 
         # I2C
         self.i2c = I2C(
-            1,
             scl=Pin(9),
             sda=Pin(8),
-            freq=1_000_000
+            freq=1000000
         )
 
         self.I2cAddress = 0x30
