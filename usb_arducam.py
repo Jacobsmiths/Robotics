@@ -107,16 +107,21 @@ class ArducamClass:
     # ------------------------
     def Camera_Detection(self):
         while True:
+            # CRITICAL: Switch to Sensor Bank 1 to read ID registers
             self.wrSensorReg8_8(0xff, 0x01)
+            utime.sleep(0.01) # Small delay for bank switch
+            
             id_h = self.rdSensorReg8_8(0x0a)
             id_l = self.rdSensorReg8_8(0x0b)
 
+            print("Debug: ID_H=0x{:02x}, ID_L=0x{:02x}".format(id_h, id_l))
+
             if (id_h == 0x26) and (id_l in (0x40, 0x42)):
-                print("CameraType is OV2640")
+                print("Success: OV2640 detected!")
                 break
             else:
-                print("Can't find OV2640 module")
-
+                print("Detection failed. Check power and ribbon cable.")
+            
             utime.sleep(1)
 
     # ------------------------
