@@ -11,8 +11,6 @@ stop_flag = 0
 buffer = bytearray(once_number)
 
 mycam = ArducamClass(OV2640)
-mycam.Camera_Detection()
-mycam.Spi_Test()
 mycam.Camera_Init()
 time.sleep(1)
 mycam.clear_fifo_flag()
