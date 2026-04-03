@@ -1,7 +1,6 @@
 from machine import Pin, SPI, I2C
 import time
 from OV2640_reg import *
-from OV5642_reg import *
 
 # Constants
 OV2640=0
