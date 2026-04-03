@@ -134,10 +134,9 @@ class ArducamClass:
         self.iic_write(bytearray([addr, val]))
 
     def rdSensorReg8_8(self, addr):
-        buf = bytearray([addr])
-        self.iic_write(buf)
-        self.iic_readinto(buf)
-        return buf[0]
+        self.i2c.writeto(self.I2cAddress, bytearray([addr]), stop=False)
+        data = self.i2c.readfrom(self.I2cAddress, 1)
+        return data[0]
 
     # ------------------------
     # SPI helpers
