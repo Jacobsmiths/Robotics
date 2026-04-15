@@ -1,16 +1,22 @@
 import machine
 import utime
 from OV2640_Constants import *
-
-# Constants
-MAX_FIFO_SIZE = 0x7FFFFF
-ARDUCHIP_FRAMES = 0x01
-ARDUCHIP_TIM = 0x03
-VSYNC_LEVEL_MASK = 0x02
-ARDUCHIP_TRIG = 0x41
-CAP_DONE_MASK = 0x08
-
-# Effect and Setting Constants
+# 
+# 
+# ARDUCHIP_FIFO = 0x04  
+# FIFO_CLEAR_MASK = 0x01
+# FIFO_START_MASK = 0x02
+# 
+# BURST_FIFO_READ = 0x3C  
+# SINGLE_FIFO_READ = 0x3D
+# 
+# ARDUCHIP_TRIG = 0x41
+# VSYNC_MASK = 0x01
+# CAP_DONE_MASK = 0x08
+# 
+# FIFO_SIZE1 = 0x42  #Camera write FIFO size[7:0] for burst to read
+# FIFO_SIZE2 = 0x43  #Camera write FIFO size[15:8]
+# FIFO_SIZE3 = 0x44  #Camera write FIFO size[18:16]
 
 class ArducamClass:
     def __init__(self):
@@ -19,34 +25,38 @@ class ArducamClass:
         # Assuming Raspberry Pi Pico pins based on original GP numbers
         self.cs = machine.Pin(5, machine.Pin.OUT)
         self.cs.value(1)
-        self.spi = machine.SPI(0, baudrate=4000000, polarity=0,phase=1, sck=machine.Pin(2), mosi=machine.Pin(3), miso=machine.Pin(4))
-        self.i2c = machine.I2C(scl=machine.Pin(9), sda=machine.Pin(8), freq=1000000)
+        self.spi = machine.SPI(0, baudrate=4000000,sck=machine.Pin(2), mosi=machine.Pin(3), miso=machine.Pin(4))
+        self.i2c = machine.I2C(scl=machine.Pin(9), sda=machine.Pin(8), freq=100000)
         utime.sleep_ms(100)
-        
         print("I2C Scan:", self.i2c.scan())
-        utime.sleep_ms(100)
-        self.spi_write(0x07, 0x80) # set hardware reset bit
-        utime.sleep_ms(100)
-        self.spi_write(0x07, 0x00) # clear  bit
-        
         
     def Camera_Init(self):
-        # most of this is the I2C settings except last part is SPI clear buffer
         print("Resetting Sensor...")
         self.wrSensorReg8_8(0xff, 0x01) # switch to bank 1
-        utime.sleep_ms(100)
         self.wrSensorReg8_8(0x12, 0x80) # resets chip
-        utime.sleep_ms(100)
-        self.wrSensorRegs8_8(OV2640_JPEG_INIT) # sets up the camera pipeline (I think(no fucking clue why jpeg is there))
+        utime.sleep_ms(500)
+        
+        # jpeg mode
+#         self.wrSensorRegs8_8(OV2640_JPEG_INIT)
+#         utime.sleep_ms(100)
+#         self.wrSensorRegs8_8(OV2640_YUV422)
+#         utime.sleep_ms(100)
+#         self.wrSensorRegs8_8(OV2640_JPEG)
+#         utime.sleep_ms(100)
+#         self.wrSensorReg8_8(0xff, 0x01)
+#         self.wrSensorReg8_8(0x15, 0x00)
+#         self.wrSensorRegs8_8(OV2640_320x240_JPEG)
+#         utime.sleep_ms(100)
+
+        # yuv format
+        self.wrSensorRegs8_8(OV2640_QVGA)
         utime.sleep_ms(100)
         self.wrSensorRegs8_8(OV2640_YUV422) # this forces YUV
         utime.sleep_ms(100)
         self.wrSensorReg8_8(0xff, 0x00) # Switch to Bank 0 for setting image settings
         utime.sleep_ms(100)
-        self.wrSensorReg8_8(0x15,0x00) # sets HSYNC polarity to be positive ???
-        utime.sleep_ms(100)
-        self.wrSensorRegs8_8(OV2640_YUV_96x96) # this is just the farting fart bruh
-        utime.sleep_ms(100)
+        self.wrSensorReg8_8(0x44,0x00) # turns off jpeg comprewsion
+#         utime.sleep_ms(100)
         print("done resetting")
         
     def spi_test(self):
@@ -55,17 +65,15 @@ class ArducamClass:
         print(f"Testing SPI")
         self.spi_write(0x00, test_val)
         utime.sleep_ms(100)
-        read_val = self.spi_read(0x00)
-        if read_val and read_val[0] == test_val:
+        read_val = self.spi_read(0x00)[0]
+        if read_val == test_val:
             print(f"SPI: Success")
         else:
-            actual_byte = read_val[0] if read_val else "None"
-            print(f"FAILED: Wrote {hex(test_val)}, but read back {hex(actual_byte)}")
+            print(f"FAILED: Wrote {hex(test_val)}, but read back {read_val}")
     
     def capture_to_buffer(self, buffer):
         self.cs.value(0)
         self.spi.write(bytes([0x3C]))
-        self.spi.read(1)
         self.spi.readinto(buffer)
         self.cs.value(1)
         return True
@@ -77,10 +85,10 @@ class ArducamClass:
     def start_capture(self):
         self.spi_write(0x04, 0x02) # This starts the captuer with bit 1
 
-    def clear_buffer(self):
-        # Reset fifo buffer (this is bit 0 + bit 4 + bit 5) for clear fifo write done flag, reset write pointer, reset fifo read pointer resp.
-        self.spi_write(0x04, 0x31)
-    
+#     def clear_buffer(self):
+#         # Reset fifo buffer (this is bit 0 + bit 4 + bit 5) for clear fifo write done flag, reset write pointer, reset fifo read pointer resp.
+#         self.spi_write(0x04, 0x31)
+
     def read_fifo_length(self):
         """Reads fifo length"""
         len1 = self.spi_read(0x42)[0]
@@ -95,9 +103,7 @@ class ArducamClass:
     def get_bit(self, addr, mask):
         """Reads one bit via SPI of the ardubridge chip"""
         res = self.spi_read(addr)
-        if res:
-            return res[0] & mask
-        return 0
+        return res[0] & mask
     
     def spi_write(self, address, value):
         # pulls the value low to wake up spi
@@ -107,12 +113,17 @@ class ArducamClass:
 
     def spi_read(self, address):
         self.cs.value(0)
-        buffer = bytearray(1)
-        buffer[0] = address & 0x7F
-        self.spi.write(buffer)
-        self.spi.readinto(buffer)
+
+        # Send address
+        self.spi.write(bytes([address & 0x7F]))
+
+        # Send dummy byte (0x00) and read response
+        tx = bytearray([0x00])
+        rx = bytearray(1)
+        self.spi.write_readinto(tx, rx)
+
         self.cs.value(1)
-        return buffer
+        return rx
         
     # I2C Communication Methods
     def wrSensorReg8_8(self, addr, val):
