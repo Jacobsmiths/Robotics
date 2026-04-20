@@ -54,8 +54,8 @@ class Drive:
         self.motor1.cwDrive()
         self.motor2.cwDrive()
         
-motor1 = MotorDriver(11,10,14)
-motor2 = MotorDriver(12,13,15)
+motor1 = MotorDriver(2,3,0)
+motor2 = MotorDriver(4,5,1)
 
 driveTrain = Drive(motor1,motor2)
 

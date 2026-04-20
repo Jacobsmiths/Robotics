@@ -16,10 +16,12 @@ ArduCAM::ArduCAM(uint8_t fmt) {
 }
 
 void ArduCAM::InitCAM() {
-    wrSensorReg8_8(0xff, 0x01);
-    wrSensorReg8_8(0x12, 0x80);
+    wrSensorReg8_8(0xff, 0x01); // switches the bank
+    wrSensorReg8_8(0x12, 0x80); // triggers reset
     sleep_ms(100);
-
+    wrSensorReg8_8(0xff, 0x00);
+    sleep_ms(100);
+    
     if (m_fmt == 0) {
         wrSensorRegs8_8(OV2640_JPEG_INIT);
         wrSensorRegs8_8(OV2640_YUV422);
@@ -29,9 +31,14 @@ void ArduCAM::InitCAM() {
         wrSensorRegs8_8(OV2640_320x240_JPEG);
     } else { // THIS IS WHAT WE WANT
         wrSensorRegs8_8(OV2640_QVGA); // Default RGB/YUV
-        wrSensorRegs8_8(OV2640_YUV422);
-        wrSensorReg8_8(0xff, 0x00); // Switch to Bank 0
-        wrSensorReg8_8(0x44, 0x00); // Disable JPEG En/Decoder
+        // wrSensorRegs8_8(OV2640_YUV422);
+        // wrSensorReg8_8(0xff, 0x00); // Switch to Bank 0
+        // wrSensorReg8_8(0x44, 0x00); // Disable JPEG En/Decoder
+        // 2. Reset DSP
+        wrSensorReg8_8(0xE0, 0x04);
+        // 3. Set output format to RGB565
+        wrSensorReg8_8(0xDA, 0x09);
+        wrSensorReg8_8(0xE0, 0x00);
     }
     
 }
@@ -42,13 +49,8 @@ void ArduCAM::read_fifo_to_buffer(uint8_t* buffer, uint32_t length) {
     // cs needs to stay low entire transfer time
     CS_LOW();
     set_fifo_burst();
-    
-    // 2. Use the plural 'transfers' to fill the whole buffer efficiently.
-    // Note: This sends the buffer contents while reading. 
-    // Since it's a FIFO read, the ArduCAM doesn't care what we send.
+    transfer(0x00);
     transfers(buffer, length);
-    
-    // 3. Finally, end the transaction here so main doesn't have to.
     CS_HIGH();
 }
 

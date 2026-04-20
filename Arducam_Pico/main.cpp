@@ -48,14 +48,14 @@ int main() {
     // YUV422 at 320x240 is always exactly 320 * 240 * 2 = 153600 bytes.
     // If read_fifo_length() returns something wildly different the
     // capture failed — bail rather than sending garbage.
-    const uint32_t EXPECTED = 320 * 240 * 2;
-    if (len == 0 || len >= 0x07ffff) {
-        printf("ERROR: Bad FIFO length: %lu (expected %lu)\n", len, EXPECTED);
-        return -1;
-    }
-    if (len != EXPECTED) {
-        printf("WARNING: FIFO length %lu != expected %lu, sending anyway\n", len, EXPECTED);
-    }
+    // const uint32_t EXPECTED = 320 * 240 * 2;
+    // if (len == 0 || len >= 0x07ffff) {
+    //     printf("ERROR: Bad FIFO length: %lu (expected %lu)\n", len, EXPECTED);
+    //     return -1;
+    // }
+    // if (len != EXPECTED) {
+    //     printf("WARNING: FIFO length %lu != expected %lu, sending anyway\n", len, EXPECTED);
+    // }
     printf("Image size: %lu bytes\n", len);
 
     printf("SENDING_IMAGE:%lu\n", len);
@@ -69,12 +69,12 @@ int main() {
     // }
 
     // CS_HIGH();
-
-    uint8_t* image_buffer = (uint8_t*)malloc(len);
+    uint32_t buffer_length = 240*320*2;
+    uint8_t* image_buffer = (uint8_t*)malloc(buffer_length);
 
     // Capture logic...
     // This one line replaces the loop and the manual CS management
-    myCAM.read_fifo_to_buffer(image_buffer, len);
+    myCAM.read_fifo_to_buffer(image_buffer, buffer_length);
 
     for (uint32_t i = 0; i < len; i++) {
         putchar_raw((int)image_buffer[i]);

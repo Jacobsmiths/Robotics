@@ -191,7 +191,7 @@ const struct sensor_reg OV2640_QVGA[] =
 	{0x55, 0x88}, 
 	{0x57, 0x0}, 
 	
-	{0x50, 0x92}, 
+	{0x50, 0x92}, 	
 	{0x5a, 0x50}, 
 	{0x5b, 0x3c}, 
 	{0x5c, 0x0}, 
@@ -209,7 +209,7 @@ const struct sensor_reg OV2640_QVGA[] =
 
 	
 	{0xff,0xff},
-};        
+};                
 
 const struct sensor_reg OV2640_JPEG_INIT[]  =
 {

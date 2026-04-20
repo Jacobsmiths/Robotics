@@ -27,36 +27,25 @@ class ArducamClass:
         self.cs.value(1)
         self.spi = machine.SPI(0, baudrate=4000000,sck=machine.Pin(2), mosi=machine.Pin(3), miso=machine.Pin(4))
         self.i2c = machine.I2C(scl=machine.Pin(9), sda=machine.Pin(8), freq=100000)
-        utime.sleep_ms(100)
+        utime.sleep_ms(200)
         print("I2C Scan:", self.i2c.scan())
         
     def Camera_Init(self):
         print("Resetting Sensor...")
         self.wrSensorReg8_8(0xff, 0x01) # switch to bank 1
+        utime.sleep_ms(100)
         self.wrSensorReg8_8(0x12, 0x80) # resets chip
-        utime.sleep_ms(500)
-        
-        # jpeg mode
-#         self.wrSensorRegs8_8(OV2640_JPEG_INIT)
-#         utime.sleep_ms(100)
-#         self.wrSensorRegs8_8(OV2640_YUV422)
-#         utime.sleep_ms(100)
-#         self.wrSensorRegs8_8(OV2640_JPEG)
-#         utime.sleep_ms(100)
-#         self.wrSensorReg8_8(0xff, 0x01)
-#         self.wrSensorReg8_8(0x15, 0x00)
-#         self.wrSensorRegs8_8(OV2640_320x240_JPEG)
-#         utime.sleep_ms(100)
+        utime.sleep_ms(100)
 
-        # yuv format
-        self.wrSensorRegs8_8(OV2640_QVGA)
+        # rgb format
+        self.wrSensorRegs8_8(OV2640_QVGA) # sets camera resolution
         utime.sleep_ms(100)
-        self.wrSensorRegs8_8(OV2640_YUV422) # this forces YUV
+        self.wrSensorReg8_8(0xE0, 0x04) # this resets the DVP
         utime.sleep_ms(100)
-        self.wrSensorReg8_8(0xff, 0x00) # Switch to Bank 0 for setting image settings
+        self.wrSensorReg8_8(0xDA, 0x09) # sets the output to be RGB
         utime.sleep_ms(100)
-        self.wrSensorReg8_8(0x44,0x00) # turns off jpeg comprewsion
-#         utime.sleep_ms(100)
+        self.wrSensorReg8_8(0xE0, 0x00) # enables DVP again
+        utime.sleep_ms(100)
         print("done resetting")
         
     def spi_test(self):
@@ -74,6 +63,7 @@ class ArducamClass:
     def capture_to_buffer(self, buffer):
         self.cs.value(0)
         self.spi.write(bytes([0x3C]))
+        self.spi.read(1)
         self.spi.readinto(buffer)
         self.cs.value(1)
         return True
@@ -85,16 +75,13 @@ class ArducamClass:
     def start_capture(self):
         self.spi_write(0x04, 0x02) # This starts the captuer with bit 1
 
-#     def clear_buffer(self):
-#         # Reset fifo buffer (this is bit 0 + bit 4 + bit 5) for clear fifo write done flag, reset write pointer, reset fifo read pointer resp.
-#         self.spi_write(0x04, 0x31)
 
     def read_fifo_length(self):
         """Reads fifo length"""
         len1 = self.spi_read(0x42)[0]
         len2 = self.spi_read(0x43)[0]
         len3 = self.spi_read(0x44)[0] & 0x7f
-        return ((len3 << 16) | (len2 << 8) | len1) & 0x7FFFFF
+        return ((len3 << 16) | (len2 << 8) | len1) & 0x07fffff
     
     def set_fifo_burst(self):
         self.cs.value(0)
