@@ -54,24 +54,6 @@ class Drive:
 motor1 = MotorDriver(2, 3, 0)
 motor2 = MotorDriver(4, 5, 1)
 driveTrain = Drive(motor1, motor2)
+driveTrain.stop()
 
-# --- Interrupt Callback ---
-def emergency_stop(pin):
-    print("STOP triggered on pin", pin)
-    driveTrain.stop()
-
-# --- Setup Stop Pins (with pull-ups) ---
-stop1 = Pin(6, Pin.IN, Pin.PULL_UP)
-stop2 = Pin(7, Pin.IN, Pin.PULL_UP)
-
-# Trigger on falling edge (button press to GND)
-stop1.irq(trigger=Pin.IRQ_RISING, handler=emergency_stop)
-stop2.irq(trigger=Pin.IRQ_RISING, handler=emergency_stop)
-
-# --- Start Driving ---
-driveTrain.driveForward()
-
-# Main loop (can be empty)
-while True:
-    sleep(1)
     
