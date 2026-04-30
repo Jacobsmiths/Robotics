@@ -1,22 +1,6 @@
 import machine
 import utime
 from OV2640_Constants import *
-# 
-# 
-# ARDUCHIP_FIFO = 0x04  
-# FIFO_CLEAR_MASK = 0x01
-# FIFO_START_MASK = 0x02
-# 
-# BURST_FIFO_READ = 0x3C  
-# SINGLE_FIFO_READ = 0x3D
-# 
-# ARDUCHIP_TRIG = 0x41
-# VSYNC_MASK = 0x01
-# CAP_DONE_MASK = 0x08
-# 
-# FIFO_SIZE1 = 0x42  #Camera write FIFO size[7:0] for burst to read
-# FIFO_SIZE2 = 0x43  #Camera write FIFO size[15:8]
-# FIFO_SIZE3 = 0x44  #Camera write FIFO size[18:16]
 
 class ArducamClass:
     def __init__(self):
@@ -26,7 +10,7 @@ class ArducamClass:
         self.cs = machine.Pin(5, machine.Pin.OUT)
         self.cs.value(1)
         self.spi = machine.SPI(0, baudrate=4000000,sck=machine.Pin(2), mosi=machine.Pin(3), miso=machine.Pin(4))
-        self.i2c = machine.I2C(scl=machine.Pin(9), sda=machine.Pin(8), freq=100000)
+        self.i2c = machine.I2C(0, scl=machine.Pin(9), sda=machine.Pin(8), freq=100000)
         utime.sleep_ms(200)
         print("I2C Scan:", self.i2c.scan())
         
@@ -53,7 +37,7 @@ class ArducamClass:
         test_val = 0x55
         print(f"Testing SPI")
         self.spi_write(0x00, test_val)
-        utime.sleep_ms(100)
+        utime.sleep_ms(200)
         read_val = self.spi_read(0x00)[0]
         if read_val == test_val:
             print(f"SPI: Success")
