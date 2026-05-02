@@ -31,12 +31,12 @@ class DriveTrain:
         self.motor2 = mtr2  # right motor
 
         # --- Overcurrent protection ---
-        self._oc1 = Pin(oc_pin, Pin.IN, Pin.PULL_UP)
+        self._oc = Pin(oc_pin, Pin.IN, Pin.PULL_UP)
         self._oc_debounce = False
         self._oc_timer = Timer()
         self._debounce_timer = Timer()
         self.oc_triggered = False
-        self._oc1.irq(trigger=Pin.IRQ_FALLING, handler=self._over_current_check)
+        self._oc.irq(trigger=Pin.IRQ_FALLING, handler=self._over_current_check)
 
     # --- Overcurrent interrupt & debounce ---
     def _over_current_check(self, pin):
@@ -53,7 +53,7 @@ class DriveTrain:
 
     def _oc_stop_enable(self, timer):
         print("stop check")
-        if not self._oc1.value():
+        if not self._oc.value():
             print("debounce true")
             self.oc_triggered = True      # ← Guard is up BEFORE debounce clears
             self._oc_debounce = False     # ← No window: oc_triggered is already True

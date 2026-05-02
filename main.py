@@ -15,7 +15,7 @@ driver_state = STOP
 
 # --- Setup Motors ---
 motor1 = MotorDriver(10, 11)
-motor2 = MotorDriver(12, 13)
+motor2 = MotorDriver(13, 12)
 driver = DriveTrain(motor1, motor2, 14)
 
 # -- ultra sonic senosr ---
