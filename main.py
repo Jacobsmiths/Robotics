@@ -1,60 +1,79 @@
 from hbridge import MotorDriver, DriveTrain
 from machine import Pin, Timer, SPI
+from ultrasonic import ultraSonicSensor
 from time import sleep
 from imager import *
 import gc
 
+# -------- driver states ------
+TARGET_BALL = 0
+NO_BALL = 1
+DRIVE_FORWARD = 2
+STOP = 3
+
+driver_state = STOP
+
 # --- Setup Motors ---
-motor1 = MotorDriver(21, 20, 17)
-motor2 = MotorDriver(19, 18, 16)
-driver = DriveTrain(motor1, motor2, 14, 15)
+motor1 = MotorDriver(10, 11)
+motor2 = MotorDriver(12, 13)
+driver = DriveTrain(motor1, motor2, 14)
 
-# --- Setup Stop Pins ---
-# stop1 = Pin(14, Pin.IN, Pin.PULL_UP)
-# stop2 = Pin(15, Pin.IN, Pin.PULL_UP)
-# 
-# # --- Debounce state ---
-# overCurrentDebounce = False
-# debounceTimer = Timer()
-
-# --- Interrupt Callback ---
-# def overCurrentCheck(pin):
-#     global overCurrentDebounce
-#     if overCurrentDebounce:
-#         return
-#     overCurrentDebounce = True
-#     debounceTimer.init(mode=Timer.ONE_SHOT, period=50, callback=overCurrentStop)
-#     
-# def overCurrentStop(timer):
-#     global overCurrentDebounce
-#     overCurrentDebounce = False
-#     if stop1.value() or stop2.value():
-#         print("STOP confirmed")
-#         driver.stop()
-#         
-# stop1.irq(trigger=Pin.IRQ_FALLING, handler=overCurrentCheck)
-# stop2.irq(trigger=Pin.IRQ_FALLING, handler=overCurrentCheck)
+# -- ultra sonic senosr ---
+ultra = ultraSonicSensor(,2226)
 
 
-# --- Ball capture flag ---
-# capture_due = False
-# 
-# def set_capture_flag(timer):
-#     global capture_due
-#     capture_due = True
-# 
-# captureTimer = Timer()
-# captureTimer.init(mode=Timer.PERIODIC, period=1000, callback=set_capture_flag)
-# 
-# driver.driveForward()
-# while True:
-#     if capture_due:
-#         capture_due = False
-#         result = capture()
-#         if result:
-#             cx, cy = result
-#             steer_to_ball(cx)
-#         else:
-#             driver.driveForward()  # lost ball, go straight
-#     gc.collect()
-driver.steer(0)
+# ---- intake motor ---
+motor_pwm = PWM(Pin(15, Pin.OUT))
+motor_pwm.freq(1000)
+
+
+# ---- itmer interrupts ---
+def set_capture_flag(timer):
+    global capture_due
+    capture_due = True
+    
+def get_dist(t):
+    global dist
+    dist = thing.measure()
+    if dist<10 and dist>-1:
+        print("WAIIIIT")
+
+
+
+captureTimer = Timer(mode=Timer.PERIODIC, period=1000, callback=set_capture_flag)
+capture_due = False
+nx = None
+
+ultraTimer = Timer(freq=10, mode=Timer.PERIODIC, callback=get_dist)
+dist = -1
+
+# ----------- main loop -------------
+while True:
+    if capture_due:
+#         print("taking impag")
+        capture_due = False
+        nx = capture()
+        if nx:
+            driver_state = TARGET_BALL
+        else:
+            driver_state = STOP
+            
+            
+    # --- driver code with distance stopper ----
+    if dist<10 and dist>-1:
+        driver.stop()
+        continue
+    
+    if driver_state == TARGET_BALL:
+        driver.steer(nx, 8000)
+    elif driver_state == NO_BALL:
+        driver.turnCW(8000)
+    elif driver_state == DRIVE_FORWARD:
+        driver.drive(0,8000)
+    elif driver_state == STOP:
+        driver.stop()
+        
+        
+    
+    
+    gc.collect()

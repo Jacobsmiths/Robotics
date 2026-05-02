@@ -51,8 +51,8 @@ class Drive:
 
 
 # --- Setup Motors ---
-motor1 = MotorDriver(2, 3, 0)
-motor2 = MotorDriver(4, 5, 1)
+motor1 = MotorDriver(21, 20, 17)
+motor2 = MotorDriver(19, 18, 16)
 driveTrain = Drive(motor1, motor2)
 driveTrain.stop()
 

@@ -1,5 +1,4 @@
 from machine import Pin
-from machine import Timer
 import time
 
 class ultraSonicSensor:
@@ -25,14 +24,3 @@ class ultraSonicSensor:
         # run calculations to get distance in cm
         cm = pulse_time * 10 // 582
         return cm
-
-thing = ultraSonicSensor(3,2)
-dist = -1
-
-def timer_handler(t):
-    global dist
-    dist = thing.measure()
-    if dist<10 and dist>-1:
-        print("WAIIIIT")
-
-tim = Timer(-1,freq=10, mode=Timer.PERIODIC, callback=timer_handler)

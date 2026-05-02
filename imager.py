@@ -13,10 +13,6 @@ grid = bytearray(GRID_W * GRID_H)
 _out = bytearray(8)
 
 
-PRIMED = 0
-WAITING = 1
-DONE = 2
-state = PRIMED
 
 @micropython.viper
 def _build_grid(buf: ptr8, grid: ptr8):
@@ -77,7 +73,7 @@ def _build_grid(buf: ptr8, grid: ptr8):
             # Gate: value [V_MIN=40, V_MAX=245]
             # Gate: chroma floor [D_MIN=40]
             # Gate: saturation   [S_MULT=80 → delta*255 ≥ 80*maxc]
-            if maxc >= 40 and maxc <= 245 and delta >= 40 and delta * 255 >= 80 * maxc:
+            if maxc >= 20 and maxc <= 245 and delta >= 40 and delta * 255 >= 80 * maxc:
 
                 # ── Red  (hue ≈ 0 ± 17°) ─────────────────────────────────────
                 # h = (g-b)*43/delta ≈ 0  →  |g-b|*43 ≤ delta*12
@@ -127,7 +123,7 @@ def _find_peak(grid: ptr8) -> int:
             gx += 1
         gy += 1
 
-    if best < 10:                          # [MIN_PEAK = 10]
+    if best < 5:                          # [MIN_PEAK = 10]
         return 0
 
     # Cluster check: ≥ 2 neighbours with count ≥ 4
@@ -140,12 +136,12 @@ def _find_peak(grid: ptr8) -> int:
                 nx = best_gx + dx
                 ny = best_gy + dy
                 if nx >= 0 and nx < 20 and ny >= 0 and ny < 15:
-                    if int(grid[ny * 20 + nx]) >= 4:
+                    if int(grid[ny * 20 + nx]) >= 2:
                         neighbors += 1
             dx += 1
         dy += 1
 
-    if neighbors < 2:
+    if neighbors < 1:
         return 0
 
     return best_gx | (best_gy << 8) | (best << 16)
@@ -259,35 +255,6 @@ def check_bit(timer):
         state = DONE
     
     
-# def capture():
-#     global state
-#     if state == DONE: # process image
-#         if mycam.read_fifo_length() == EXPECTED_LEN:
-#             mycam.capture_to_buffer(buf)
-#             result = detect_ball()
-#             if result is None:
-#                 print("no ball")
-#             else:
-#                 cx, cy, area, fill = result
-#                 nx = (cx - 160) / 160.0
-#                 ny = (cy - 120) / 120.0
-#                 print(f"BALL ({cx},{cy}) norm=({nx:.2f},{ny:.2f}) area={area} fill={fill}%")
-#                 
-#         gc.collect()  
-#         pollTimer.deinit()
-#         state = PRIMED
-#         
-#     elif state == WAITING:
-#         return
-#     
-#     elif state == PRIMED:
-#         mycam.clear_fifo()
-#         mycam.clear_fifo()
-#         mycam.start_capture()
-#     
-#         pollTimer.init(mode=Timer.PERIODIC, freq=10000, callback=check_bit)
-#         state = WAITING
-
 def capture():
     mycam.clear_fifo()
     mycam.clear_fifo()
@@ -295,10 +262,11 @@ def capture():
 
     deadline = time.ticks_add(time.ticks_ms(), 1000)
     while not mycam.get_bit(0x41, 0x08):
+        
         if time.ticks_diff(deadline, time.ticks_ms()) <= 0:
             print("capture timeout")
             break
-        time.sleep_ms(5)
+        time.sleep_ms(1)
 
     if mycam.read_fifo_length() == EXPECTED_LEN:
         mycam.capture_to_buffer(buf)
